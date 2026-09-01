@@ -1,3 +1,4 @@
+[README.md](https://github.com/user-attachments/files/31674615/README.md)
 # Exam Timer
 
 A single-file, offline exam timer with reading time, working time, pause, and
@@ -25,8 +26,12 @@ so refreshing the page resets it.
 - **Pause** freezes the clock (use for interruptions); **Resume** continues it.
 - **Start rest break** switches to the rest-break clock and pauses working
   time. It's greyed out once less than 5 minutes of allowance remains.
-- **End rest break** unlocks after 5 minutes and returns to working time. If
-  the allowance runs out mid-break, it ends automatically.
+- **Break length** (on the rest-break screen) is how long the student intends
+  this break to last, e.g. `05:00`. The clock counts it down and the break
+  ends on its own when it runs out. The student can change it mid-break
+  (to extend if they're not rested yet) within the rules: never under 5:00
+  and never more than the allowance left.
+- **End rest break now** unlocks after 5 minutes for ending a break early.
 - A running log at the bottom records every break taken, with its length and
   the working time remaining at that point — useful for the supervisor's
   record.
@@ -35,12 +40,16 @@ so refreshing the page resets it.
 
 ## How rest breaks are enforced
 
-- Allowance = rate × complete half hours of **working time only** (reading
-  time is never counted).
+- Allowance = rate × complete half hours of **total exam time** (reading +
+  working). E.g. 10 min reading + 2h 20m working = 2h 30m = 5 half hours
+  × 5 min = 25 minutes. Breaks themselves can only be taken during working
+  time.
 - No break can be shorter than 5 minutes or push the total over the
   allowance — the buttons simply won't allow it.
 - Partial half hours (e.g. the extra 10 minutes in a 2h10m exam) don't add to
   the allowance, matching how the provision is usually applied.
+- If the browser tab is suspended mid-break, any time beyond the planned
+  length or the allowance is charged to working time, never gained.
 
 ## Files
 
