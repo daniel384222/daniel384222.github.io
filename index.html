@@ -4,11 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Exam timer</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://rsms.me/">
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
 <style>
   :root{
+    font-family:Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-feature-settings:'liga' 1, 'calt' 1;   /* fix for Chrome */
     --bg:#ffffff;
     --ink:#0a0a0a;
     --muted:#6b7280;
@@ -20,6 +21,9 @@
     --green-bg:#f2fbf7;
     --pause-bg:#fafafa;
     --radius:10px;
+  }
+  @supports (font-variation-settings: normal){
+    :root{ font-family:InterVariable, system-ui, -apple-system, "Segoe UI", sans-serif; }
   }
   @media (prefers-color-scheme: dark){
     :root{
@@ -34,7 +38,6 @@
     margin:0;
     background:var(--bg);
     color:var(--ink);
-    font-family:"Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
     -webkit-font-smoothing:antialiased;
     transition:background-color .35s ease;
   }
