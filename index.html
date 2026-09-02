@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Exam timer</title>
+<link rel="icon" type="image/png" href="https://i.ibb.co/qYxH6hbQ/timer-svgrepo-com.png">
+<link rel="apple-touch-icon" href="https://i.ibb.co/qYxH6hbQ/timer-svgrepo-com.png">
 <link rel="preconnect" href="https://rsms.me/">
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
 <style>
@@ -150,7 +152,7 @@
         <div><input type="number" id="reading" min="0" max="60" step="1" value="10" inputmode="numeric"></div>
         <div class="unit">minutes</div>
       </div>
-      <span class="hint">Set to 0 if this exam has no reading time. Reading time counts towards exam time for the allowance, but rest breaks can only be taken during working time.</span>
+      <span class="hint">Set to 0 if this exam has no reading time. Reading time counts towards exam time for the rest-break allowance.</span>
     </div>
 
     <div class="field">
@@ -230,7 +232,7 @@
     phase:"ready",          // ready | reading | working | break | done
     paused:false,
     thisBreak:0, breaks:[],
-    planned:0, breakMax:0, lastPlanned:0,   // this break's target length, the allowance when it began, and the default for the next one
+    planned:0, breakMax:0, lastPlanned:0, breakFrom:"working",   // breakFrom: the phase to return to after a break   // this break's target length, the allowance when it began, and the default for the next one
     last:0, ticker:null, sound:true, wakeLock:null
   };
 
@@ -425,13 +427,7 @@
 
     if (!S.paused){
       if (S.phase === "reading"){
-        S.reading -= dt;
-        if (S.reading <= 0){
-          var carry = -S.reading;
-          S.reading = 0;
-          beginWorking();
-          S.working -= carry;
-        }
+        spendReading(dt);
       } else if (S.phase === "break"){
         S.thisBreak += dt;
         S.allowance -= dt;
@@ -443,7 +439,8 @@
           var over = S.thisBreak - cap;
           S.thisBreak  = cap;
           S.allowance += over;
-          S.working   -= over;
+          S.phase = S.breakFrom;                  // leave the break, then charge the overrun to that clock
+          if (S.phase === "reading") spendReading(over); else S.working -= over;
           endBreak(S.allowance <= 0 ? "allowance" : "planned");
         }
       } else if (S.phase === "working"){
@@ -463,6 +460,16 @@
   function beginWorking(){
     S.phase = "working";
     beep([0, 0.45]);
+  }
+
+  function spendReading(ms){       // take time off the reading clock, rolling any excess into working time
+    S.reading -= ms;
+    if (S.reading <= 0){
+      var carry = -S.reading;
+      S.reading = 0;
+      beginWorking();
+      S.working -= carry;
+    }
   }
 
   /* ---------------- actions ---------------- */
@@ -494,8 +501,9 @@
   });
 
   els.btnRest.addEventListener("click", function(){
-    if (S.phase !== "working" || S.paused) return;
+    if ((S.phase !== "working" && S.phase !== "reading") || S.paused) return;
     if (S.allowance < MIN_BREAK) return;          // rule: can't start a break under 5 minutes
+    S.breakFrom = S.phase;
     S.phase = "break";
     S.thisBreak = 0;
     S.breakMax = S.allowance;
@@ -528,13 +536,14 @@
   });
 
   function endBreak(reason){             // "planned" | "allowance" | "manual"
+    if (S.phase === "break") S.phase = S.breakFrom;   // (the tick engine may already have returned us)
     S.breaks.push({
       duration: S.thisBreak,
-      atWorking: S.working,
+      phase: S.phase,
+      at: S.phase === "reading" ? S.reading : S.working,
       reason: reason
     });
     S.thisBreak = 0;
-    S.phase = "working";
     if (reason !== "manual") beep([0, 0.45]);
     renderLog();
     render();
@@ -577,6 +586,12 @@
   /* ---------------- rendering ---------------- */
 
   function show(el, on){ el.hidden = !on; }
+  function allowanceLine(){
+    if (S.allowanceTotal === 0) return "No rest-break allowance for this exam.";
+    if (S.allowance < MIN_BREAK) return "Rest-break allowance <b>" + mmss(S.allowance) + "</b> left — under the 5-minute minimum, so no further breaks can be taken.";
+    return "Rest-break allowance <b>" + mmss(S.allowance) + "</b> left of " + mmss(S.allowanceTotal) +
+      " · " + plural(S.breaks.length, "break") + " taken";
+  }
   function setText(el, str){ if (el.textContent !== str) el.textContent = str; }
   function setHTML(el, str){ if (el.__html !== str){ el.__html = str; el.innerHTML = str; } }
 
@@ -587,7 +602,9 @@
 
     // Controls
     show(els.btnStart,  p === "ready");
-    show(els.btnRest,   p === "working" && !paused);
+    show(els.btnRest,   (p === "working" || p === "reading") && !paused);
+    els.btnRest.disabled = S.allowance < MIN_BREAK;
+    els.btnRest.title    = S.allowance < MIN_BREAK ? "Less than 5 minutes of allowance remains" : "";
     show(els.btnEndRest, p === "break" && !paused);
     show(els.plannedWrap, p === "break" && !paused);
     show(els.breakNote,  p === "break");
@@ -600,27 +617,18 @@
       setText(els.phase, S.readingTotal > 0 ? "Reading time" : "Working time");
       setText(els.time, clock(S.readingTotal > 0 ? S.readingTotal : S.workingTotal));
       setHTML(els.sub, S.allowanceTotal > 0
-        ? "Rest-break allowance <b>" + mmss(S.allowanceTotal) + "</b> · available once working time starts"
+        ? "Rest-break allowance <b>" + mmss(S.allowanceTotal) + "</b> · available once the exam starts"
         : "No rest-break allowance for this exam.");
     }
     else if (p === "reading"){
       setText(els.phase, paused ? "Reading time (paused)" : "Reading time");
       setText(els.time, clock(S.reading));
-      setHTML(els.sub, "Working time starts automatically. Rest breaks can't be taken during reading time.");
+      setHTML(els.sub, "Working time starts automatically when reading time ends.<br>" + allowanceLine());
     }
     else if (p === "working"){
       setText(els.phase, paused ? "Working time (paused)" : "Working time left");
       setText(els.time, clock(S.working));
-      if (S.allowanceTotal === 0){
-        setHTML(els.sub, "No rest-break allowance for this exam.");
-      } else if (S.allowance < MIN_BREAK){
-        setHTML(els.sub, "Rest-break allowance <b>" + mmss(S.allowance) + "</b> left — under the 5-minute minimum, so no further breaks can be taken.");
-      } else {
-        setHTML(els.sub, "Rest-break allowance <b>" + mmss(S.allowance) + "</b> left of " + mmss(S.allowanceTotal) +
-          " · " + plural(S.breaks.length, "break") + " taken");
-      }
-      els.btnRest.disabled = S.allowance < MIN_BREAK;
-      els.btnRest.title    = S.allowance < MIN_BREAK ? "Less than 5 minutes of allowance remains" : "";
+      setHTML(els.sub, allowanceLine());
     }
     else if (p === "break"){
       setText(els.phase, paused ? "Rest break (paused)" : "Rest break");
@@ -629,7 +637,8 @@
       els.btnEndRest.disabled = !canEnd;
       setText(els.btnEndRest, canEnd ? "End rest break now" : "End early after 5:00");
       setHTML(els.sub, "This break <b>" + elapsed(S.thisBreak) + "</b> of " + mmss(S.planned) +
-        " · allowance after it <b>" + mmss(S.breakMax - S.planned) + "</b> · working time held at " + clock(S.working));
+        " · allowance after it <b>" + mmss(S.breakMax - S.planned) + "</b> · " + S.breakFrom + " time held at " +
+        clock(S.breakFrom === "reading" ? S.reading : S.working));
       setText(els.breakNote, els.planned.disabled
         ? "Only 5:00 of allowance remains, so this break is fixed at 5:00."
         : "The break ends on its own when the planned length runs out. Change it any time, between 5:00 and " + elapsed(S.breakMax) + ".");
@@ -661,7 +670,7 @@
       var a = document.createElement("span");
       a.textContent = "Break " + (i+1) + " — " + elapsed(b.duration);
       var c = document.createElement("span");
-      c.textContent = "at " + clock(b.atWorking) + " remaining" + (b.reason === "allowance" ? " · allowance used up" : "");
+      c.textContent = "at " + clock(b.at) + " " + b.phase + " time left" + (b.reason === "allowance" ? " · allowance used up" : "");
       li.appendChild(a); li.appendChild(c);
       els.logList.appendChild(li);
     });
