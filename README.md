@@ -23,8 +23,9 @@ so refreshing the page resets it.
 - **Start reading time** begins the countdown. It switches to working time on
   its own when reading time runs out.
 - **Pause** freezes the clock (use for interruptions); **Resume** continues it.
-- **Start rest break** switches to the rest-break clock and pauses working
-  time. It's greyed out once less than 5 minutes of allowance remains.
+- **Start rest break** is available during working time only. It switches to
+  the rest-break clock and holds the working clock. It's greyed out once less
+  than 5 minutes of allowance remains.
 - **Break length** (on the rest-break screen) is how long the student intends
   this break to last, e.g. `05:00`. The clock counts it down and the break
   ends on its own when it runs out. The student can change it mid-break
@@ -39,9 +40,9 @@ so refreshing the page resets it.
 
 ## How rest breaks are enforced
 
-- Allowance = rate × complete half hours of **total exam time** (reading +
-  working). E.g. 10 min reading + 2h 20m working = 2h 30m = 5 half hours
-  × 5 min = 25 minutes. Breaks themselves can only be taken during working
+- Allowance = rate × complete half hours of **working time only** (reading
+  time is not counted). E.g. 2h 30m working = 5 half hours × 5 min =
+  25 minutes. Breaks can only be taken during working time, not reading
   time.
 - No break can be shorter than 5 minutes or push the total over the
   allowance — the buttons simply won't allow it.
@@ -53,5 +54,5 @@ so refreshing the page resets it.
 ## Files
 
 - `exam-timer.html` — the whole app. Keep it as one file; it has no
-  dependencies except a Google Fonts request for Inter (falls back to the
+  dependencies except a request to rsms.me for Inter (falls back to the
   system font if offline).
