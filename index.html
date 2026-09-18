@@ -142,7 +142,7 @@
   <!-- ================= SETUP ================= -->
   <section class="setup" id="setup">
     <h1>Set up your exam timer</h1>
-    <p class="lede">Enter the exam details. The rest-break allowance is worked out from the total exam time (reading + working) and the rules are enforced for you.</p>
+    <p class="lede">Enter the exam details. The rest-break allowance is worked out from the working time and the rules are enforced for you.</p>
 
     <div class="field">
       <label for="course">Course</label>
@@ -160,7 +160,7 @@
         <div><input type="number" id="reading" min="0" max="60" step="1" value="10" inputmode="numeric"></div>
         <div class="unit">minutes</div>
       </div>
-      <span class="hint">Set to 0 if this exam has no reading time. Reading time counts towards exam time for the rest-break allowance.</span>
+      <span class="hint">Set to 0 if this exam has no reading time. Reading time doesn't count towards the rest-break allowance, and rest breaks can't be taken during it.</span>
     </div>
 
     <div class="field">
@@ -240,7 +240,7 @@
     phase:"ready",          // ready | reading | working | break | done
     paused:false,
     thisBreak:0, breaks:[],
-    planned:0, breakMax:0, lastPlanned:0, breakFrom:"working",   // breakFrom: the phase to return to after a break   // this break's target length, the allowance when it began, and the default for the next one
+    planned:0, breakMax:0, lastPlanned:0,   // this break's target length, the allowance when it began, and the default for the next one
     last:0, ticker:null, sound:true, wakeLock:null
   };
 
@@ -294,9 +294,9 @@
     return d.toLocaleDateString("en-AU", {weekday:"long", day:"numeric", month:"long", year:"numeric"});
   }
 
-  // Allowance = rate for every COMPLETE half hour of exam time (reading + working).
-  function allowanceFor(examMinutes, rate){
-    return Math.floor(examMinutes / 30) * rate * MIN;
+  // Allowance = rate for every COMPLETE half hour of working time (reading time excluded).
+  function allowanceFor(workingMinutes, rate){
+    return Math.floor(workingMinutes / 30) * rate * MIN;
   }
 
   var audioCtx = null;
@@ -351,24 +351,22 @@
 
   function previewAllowance(){
     var v = readSetup();
-    var examMin = v.readingMin + v.workingMin;
-    var halves = Math.floor(examMin / 30);
-    var ms = allowanceFor(examMin, v.rate);
+    var halves = Math.floor(v.workingMin / 30);
+    var ms = allowanceFor(v.workingMin, v.rate);
     var mins = ms / MIN;
 
     els.allowancePreview.textContent = "Rest-break allowance: " +
       (ms > 0 ? (Number.isInteger(mins) ? mins : mins.toFixed(1)) + " minutes" : "none");
 
     var note;
-    if (examMin === 0){
-      note = "Enter the exam times to see the allowance.";
+    if (v.workingMin === 0){
+      note = "Enter a working time to see the allowance.";
     } else if (halves === 0){
-      note = "The exam time is under half an hour, so no rest-break allowance is generated.";
+      note = "The working time is under half an hour, so no rest-break allowance is generated.";
     } else {
-      note = plural(halves, "complete half hour") + " of exam time" +
-        (v.readingMin > 0 ? " (" + fmtMin(v.readingMin) + " reading + " + fmtMin(v.workingMin) + " working)" : "") +
-        " × " + v.rate + " minutes.";
-      var left = examMin % 30;
+      note = plural(halves, "complete half hour") + " of working time (" + fmtMin(v.workingMin) + ") × " + v.rate + " minutes." +
+        (v.readingMin > 0 ? " Reading time isn't counted." : "");
+      var left = v.workingMin % 30;
       if (left > 0) note += " The remaining " + plural(left, "minute") + " doesn't complete a half hour, so it adds nothing.";
       if (ms > 0 && ms < MIN_BREAK) note += " This is under the 5-minute minimum, so no break can actually be taken.";
     }
@@ -393,7 +391,7 @@
     S.dateText      = longDate(els.date.value);
     S.readingTotal  = v.readingMin * MIN;
     S.workingTotal  = v.workingMin * MIN;
-    S.allowanceTotal= allowanceFor(v.readingMin + v.workingMin, v.rate);
+    S.allowanceTotal= allowanceFor(v.workingMin, v.rate);
     S.reading       = S.readingTotal;
     S.working       = S.workingTotal;
     S.allowance     = S.allowanceTotal;
@@ -447,8 +445,7 @@
           var over = S.thisBreak - cap;
           S.thisBreak  = cap;
           S.allowance += over;
-          S.phase = S.breakFrom;                  // leave the break, then charge the overrun to that clock
-          if (S.phase === "reading") spendReading(over); else S.working -= over;
+          S.working   -= over;
           endBreak(S.allowance <= 0 ? "allowance" : "planned");
         }
       } else if (S.phase === "working"){
@@ -509,9 +506,8 @@
   });
 
   els.btnRest.addEventListener("click", function(){
-    if ((S.phase !== "working" && S.phase !== "reading") || S.paused) return;
-    if (S.allowance < MIN_BREAK) return;          // rule: can't start a break under 5 minutes
-    S.breakFrom = S.phase;
+    if (S.phase !== "working" || S.paused) return;   // rule: breaks only during working time
+    if (S.allowance < MIN_BREAK) return;              // rule: can't start a break under 5 minutes
     S.phase = "break";
     S.thisBreak = 0;
     S.breakMax = S.allowance;
@@ -544,14 +540,13 @@
   });
 
   function endBreak(reason){             // "planned" | "allowance" | "manual"
-    if (S.phase === "break") S.phase = S.breakFrom;   // (the tick engine may already have returned us)
     S.breaks.push({
       duration: S.thisBreak,
-      phase: S.phase,
-      at: S.phase === "reading" ? S.reading : S.working,
+      at: S.working,
       reason: reason
     });
     S.thisBreak = 0;
+    S.phase = "working";
     if (reason !== "manual") beep([0, 0.45]);
     renderLog();
     render();
@@ -610,7 +605,7 @@
 
     // Controls
     show(els.btnStart,  p === "ready");
-    show(els.btnRest,   (p === "working" || p === "reading") && !paused);
+    show(els.btnRest,   p === "working" && !paused);
     els.btnRest.disabled = S.allowance < MIN_BREAK;
     els.btnRest.title    = S.allowance < MIN_BREAK ? "Less than 5 minutes of allowance remains" : "";
     show(els.btnEndRest, p === "break" && !paused);
@@ -625,13 +620,13 @@
       setText(els.phase, S.readingTotal > 0 ? "Reading time" : "Working time");
       setText(els.time, clock(S.readingTotal > 0 ? S.readingTotal : S.workingTotal));
       setHTML(els.sub, S.allowanceTotal > 0
-        ? "Rest-break allowance <b>" + mmss(S.allowanceTotal) + "</b> · available once the exam starts"
+        ? "Rest-break allowance <b>" + mmss(S.allowanceTotal) + "</b> · available once working time starts"
         : "No rest-break allowance for this exam.");
     }
     else if (p === "reading"){
       setText(els.phase, paused ? "Reading time (paused)" : "Reading time");
       setText(els.time, clock(S.reading));
-      setHTML(els.sub, "Working time starts automatically when reading time ends.<br>" + allowanceLine());
+      setHTML(els.sub, "Working time starts automatically. Rest breaks can't be taken during reading time.");
     }
     else if (p === "working"){
       setText(els.phase, paused ? "Working time (paused)" : "Working time left");
@@ -645,8 +640,7 @@
       els.btnEndRest.disabled = !canEnd;
       setText(els.btnEndRest, canEnd ? "End rest break now" : "End early after 5:00");
       setHTML(els.sub, "This break <b>" + elapsed(S.thisBreak) + "</b> of " + mmss(S.planned) +
-        " · allowance after it <b>" + mmss(S.breakMax - S.planned) + "</b> · " + S.breakFrom + " time held at " +
-        clock(S.breakFrom === "reading" ? S.reading : S.working));
+        " · allowance after it <b>" + mmss(S.breakMax - S.planned) + "</b> · working time held at " + clock(S.working));
       setText(els.breakNote, els.planned.disabled
         ? "Only 5:00 of allowance remains, so this break is fixed at 5:00."
         : "The break ends on its own when the planned length runs out. Change it any time, between 5:00 and " + elapsed(S.breakMax) + ".");
@@ -678,7 +672,7 @@
       var a = document.createElement("span");
       a.textContent = "Break " + (i+1) + " — " + elapsed(b.duration);
       var c = document.createElement("span");
-      c.textContent = "at " + clock(b.at) + " " + b.phase + " time left" + (b.reason === "allowance" ? " · allowance used up" : "");
+      c.textContent = "at " + clock(b.at) + " remaining" + (b.reason === "allowance" ? " · allowance used up" : "");
       li.appendChild(a); li.appendChild(c);
       els.logList.appendChild(li);
     });
